@@ -4,17 +4,36 @@ import pandas as pd
 import re
 from datetime import datetime
 from datetime import date
-from os import listdir
+from os import listdir  
 from os.path import isfile, join
 
 class Consultor:
     def __init__(self):
         pass
        
-    def _get_parameters(self, start_path, initial_date = None, final_date = None):
-        all_files = listdir(start_path)
-        df = pd.DataFrame([f for f in all_files if f.endswith(".parquet")])
-        df = df.rename(columns = {0: 'File'})  
+    def _load_files(self, location):
+        start_path = os.getenv("HOME") + '/bigdata/database' if os.path.isdir(os.getenv("HOME") + '/bigdata') else '/bigdata/database'
+        os.chdir(start_path)
+        df_historical = pd.read_csv("allsymbols.csv", sep = ',')
+        df_trades = pd.read_csv("alltrades.csv", sep = ';')
+        df_mirror = pd.read_csv('mirrorfiles.csv', sep  = ';')
+        
+        if location == 'events': 
+            return list(df_historical['title'])
+        elif location == 'trades':
+            return list(df_trades['title'])
+        elif location == 'mirror':
+            return list(df_mirror['title'])
+
+    def _filter_date_from_files(self, start_path, initial_date = None, final_date = None, location_of_files = None, directory= None):
+        if location_of_files is None:      
+            all_files = listdir(start_path)
+            df = pd.DataFrame([f for f in all_files if f.endswith(".parquet")])
+            df = df.rename(columns = {0: 'File'})  
+        else:
+            df = self._load_files(location= directory)
+            df = pd.DataFrame(df)
+            df = df.rename(columns = {0: 'File'}) 
         
         if (initial_date != None or final_date != None):     
             df['Date'] =df['File'].apply(lambda x: re.findall(r'\d{4}-\d{2}-\d{2}', x))
@@ -31,12 +50,12 @@ class Consultor:
         return DATA
 
     # @profile
-    def get_events(self, initial_date=None, final_date=None, symbol=None, type_=None, Name_ = None):
+    def get_events(self, initial_date=None, final_date=None, symbol=None, type_=None, list_of_files = None):
         start_path = os.getenv("HOME") + '/bigdata/events' if os.path.isdir(os.getenv("HOME") + '/bigdata') else '/bigdata/events'
-        if Name_ is None:
-            NAME = self._get_parameters(initial_date= initial_date, final_date=final_date, start_path= start_path)
+        if list_of_files is None:
+            _files_ = self._filter_date_from_files(initial_date= initial_date, final_date=final_date, start_path= start_path)
         else: 
-            NAME = Name_
+            _files_ = self._filter_date_from_files(initial_date= initial_date, final_date=final_date, start_path= start_path, location_of_files= 'database', directory='events')
         dict_info= {}  
         pattern_type_ = type_               
         pattern_symbol = symbol
@@ -51,7 +70,7 @@ class Consultor:
 
         #User enters parameters only for Inc 
         if symbol is None:
-            for title in NAME:
+            for title in _files_:
                 split = title.split('-')
                 symb = split[0]
                 if symb not in dict_info:        
@@ -72,8 +91,8 @@ class Consultor:
             elif type(pattern_symbol) is tuple:
                 pattern_symbol = list(pattern_symbol)                 
             for symb_ in pattern_symbol:
-                for title in NAME:                    
-                    if symb_ in title:
+                for title in _files_:                    
+                    if symb_ in title: 
                         split = title.split('-')
                         symb = split[0]
                         if symb not in dict_info:        
@@ -89,21 +108,10 @@ class Consultor:
      
         return  dict_info
 
-    def _load_files(self, location):
-        start_path = os.getenv("HOME") + '/bigdata/database' if os.path.isdir(os.getenv("HOME") + '/bigdata') else '/bigdata/database'
-        os.chdir(start_path)
-        df_historical = pd.read_csv("allfiles.csv", sep = ',')
-        df_trades = pd.read_csv("alltrades.csv", sep = ';')
-        
-        if location == 'events': 
-            return list(df_historical['title'])
-        elif location == 'trades':
-            return list(df_trades['title'])
-
     def diff_events(self, initial_date=None, final_date=None, symbol=None, type_=None):
-        events = self.get_events(initial_date=initial_date, final_date=final_date, symbol=symbol, type_=type_, Name_ = None)
+        events = self.get_events(initial_date=initial_date, final_date=final_date, symbol=symbol, type_=type_, list_of_files = None)
         df = self._load_files(location= 'events')        
-        historical = self.get_events(initial_date=initial_date, final_date=final_date, symbol=symbol, type_=type_, Name_ = df )
+        historical = self.get_events(initial_date=initial_date, final_date=final_date, symbol=symbol, type_=type_, list_of_files = df)
         dict_final ={}
 
         for key in historical:
@@ -119,12 +127,12 @@ class Consultor:
 
         return dict_final
 
-    def get_trades(self, initial_date = None, final_date = None, symbol = None, Name_ = None):
+    def get_trades(self, initial_date = None, final_date = None, symbol = None, list_of_files = None):
         start_path = os.getenv("HOME") + '/bigdata/trades' if os.path.isdir(os.getenv("HOME") + '/bigdata') else '/bigdata/trades'
-        if Name_ is None:
-            NAME = self._get_parameters(initial_date= initial_date, final_date=final_date, start_path= start_path)
+        if list_of_files is None:
+            _files_ = self._filter_date_from_files(initial_date= initial_date, final_date=final_date, start_path= start_path)
         else: 
-            NAME = Name_     
+            _files_ = self._filter_date_from_files(initial_date= initial_date, final_date=final_date, start_path= start_path, location_of_files= 'database', directory='trades')
         dict_info= {}                       
         pattern_symbol = symbol
 
@@ -134,7 +142,7 @@ class Consultor:
             elif type(pattern_symbol) is tuple:
                 pattern_symbol = list(pattern_symbol)
             for symb_ in pattern_symbol:
-                for title in NAME:
+                for title in _files_:
                     if symb_ in title:
                         split = title.split('-')
                         symb = split[0]
@@ -145,7 +153,7 @@ class Consultor:
                             date_ = '-'.join(date_)                                     
                             dict_info[symb] += [date_]           
         elif symbol is None:            
-            for title in NAME:
+            for title in _files_:
                 split = title.split('-')
                 symb = split[0]
                 if symb not in dict_info:     
@@ -157,10 +165,39 @@ class Consultor:
 
         return dict_info
 
+    def get_mirror(self, initial_date = None, final_date = None, list_of_files = None):
+        start_path = os.getenv("HOME") + '/bigdata/mirror' if os.path.isdir(os.getenv("HOME") + '/bigdata') else '/bigdata/mirror'
+        if list_of_files is None:
+            _files_ = self._filter_date_from_files(initial_date= initial_date, final_date=final_date, start_path= start_path)
+        else: 
+            _files_ = self._filter_date_from_files(initial_date= initial_date, final_date=final_date, start_path= start_path, location_of_files= 'database', directory='mirror')
+        dict_info= []                     
+
+        for title in _files_:
+            date_ = re.findall(r'\d{4}-\d{2}-\d{2}', title)
+            date_ = '-'.join(date_)                                     
+            dict_info += [date_]
+
+        return dict_info
+
+
+    def diff_mirror(self, initial_date=None, final_date=None):
+        events = self.get_mirror(initial_date=initial_date, final_date=final_date, list_of_files = None)
+        df = self._load_files(location= 'mirror')        
+        historical = self.get_mirror(initial_date=initial_date, final_date=final_date, list_of_files = df )
+        # dict_final ={}
+
+        set_historical = set(historical)
+        set_events = set(events)
+        diff = list(set_historical.difference(set_events))
+
+        return diff
+
+
     def diff_trades(self, initial_date=None, final_date=None, symbol=None):
-        events = self.get_trades(initial_date=initial_date, final_date=final_date, symbol=symbol, Name_ = None)
+        events = self.get_trades(initial_date=initial_date, final_date=final_date, symbol=symbol, list_of_files = None)
         df = self._load_files(location= 'trades')        
-        historical = self.get_trades(initial_date=initial_date, final_date=final_date, symbol=symbol, Name_ = df )
+        historical = self.get_trades(initial_date=initial_date, final_date=final_date, symbol=symbol, list_of_files = df )
         dict_final ={}
 
         for key in historical:
@@ -176,7 +213,7 @@ class Consultor:
 
     def get_order_book(self, initial_date = None, final_date = None, symbol = None):
         start_path = os.getenv("HOME") + '/bigdata/order-book' if os.path.isdir(os.getenv("HOME") + '/bigdata') else '/bigdata/order-book'                
-        NAME = self._get_parameters(initial_date= initial_date, final_date=final_date, start_path= start_path)
+        _files_ = self._filter_date_from_files(initial_date= initial_date, final_date=final_date, start_path= start_path)
         dict_info= {}                       
         pattern_symbol = symbol
         field = ('broker', 'inc_code', 'order_id', 'price', 'quantity')
@@ -188,7 +225,7 @@ class Consultor:
             elif type(pattern_symbol) is tuple:
                 pattern_symbol = list(pattern_symbol)
         elif symbol is None:
-            for title in NAME:
+            for title in _files_:
                 split = title.split('-')
                 pattern_symbol = split[0]           
                 pattern_symbol = [pattern_symbol]  
@@ -199,7 +236,7 @@ class Consultor:
                 dict_info[symb][field_] = {}
                 for side_ in side:
                     dict_info[symb][field_][side_] = []
-                    for title in NAME:
+                    for title in _files_:
                         if symb in title:
                             if field_ in title:
                                 if side_ in title:
@@ -210,7 +247,7 @@ class Consultor:
 
     def get_level_book(self, initial_date = None, final_date = None, symbol = None):
         start_path = os.getenv("HOME") + '/bigdata/level-book' if os.path.isdir(os.getenv("HOME") + '/bigdata') else '/bigdata/level-book'
-        NAME = self._get_parameters(initial_date= initial_date, final_date=final_date, start_path= start_path)
+        _files_ = self._filter_date_from_files(initial_date= initial_date, final_date=final_date, start_path= start_path)
         dict_info= {}                       
         pattern_symbol = symbol
         field = ('broker', 'price', 'quantity')
@@ -222,7 +259,7 @@ class Consultor:
             elif type(pattern_symbol) is tuple:
                 pattern_symbol = list(pattern_symbol)
         elif symbol is None:
-            for title in NAME:
+            for title in _files_:
                 split = title.split('-')
                 pattern_symbol = split[0]           
                 pattern_symbol = [pattern_symbol]  
@@ -232,7 +269,7 @@ class Consultor:
                 dict_info[symb][field_] = {}
                 for side_ in side:
                     dict_info[symb][field_][side_] = []
-                    for title in NAME:
+                    for title in _files_:
                         if symb in title:
                             if field_ in title:
                                 if side_ in title:
@@ -252,10 +289,10 @@ if __name__ == '__main__':
 
     initial_date = '2019-07-15'
     final_date = '2019-11-18'
-
     consult = Consultor()     
-
     consult.get_events()
+    consult.get_mirror()
+    consult.diff_mirror()
     consult.diff_events()
     consult.diff_trades()
     consult.get_trades(initial_date=initial_date, final_date=final_date, symbol= symbol_future)
